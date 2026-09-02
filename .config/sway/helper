@@ -1,0 +1,140 @@
+#!/bin/sh
+
+set -eu
+
+runtime_dir=${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is not set}
+wob_pipe=$runtime_dir/wobpipe
+
+menu() {
+    program=$1
+    shift
+    "$program" -i -f "Office Code Pro 12.6" \
+        -N 0a0a0a -n f0f0f0 -M 275f94 -m f0f0f0 \
+        -S 275f94 -s f0f0f0 "$@"
+}
+
+show_osd() {
+    [ -p "$wob_pipe" ] || return 0
+    timeout 1 sh -c 'printf "%s\n" "$1" >"$2"' \
+        _ "$1" "$wob_pipe" >/dev/null 2>&1 || :
+}
+
+case ${1:-} in
+    launcher)
+        menu wmenu-run
+        ;;
+
+    bar)
+        battery=
+        for path in /sys/class/power_supply/BAT*; do
+            if [ -r "$path/capacity" ]; then
+                battery=$path
+                break
+            fi
+        done
+
+        while :; do
+            battery_text=
+            if [ -n "$battery" ]; then
+                capacity=$(cat "$battery/capacity")
+                status=$(cat "$battery/status")
+                case $status in
+                    Charging) battery_text=" +${capacity}" ;;
+                    Full)     battery_text=" +${capacity}" ;;
+                    *)        battery_text="  ${capacity}" ;;
+                esac
+            fi
+            printf '%s%s\n' "$(date '+%A  %F  %R')" "$battery_text"
+            sleep 15
+        done
+        ;;
+
+    wob)
+        if [ -e "$wob_pipe" ] && [ ! -p "$wob_pipe" ]; then
+            printf '%s\n' "$wob_pipe exists and is not a FIFO" >&2
+            exit 1
+        fi
+        [ -p "$wob_pipe" ] || mkfifo -m 600 "$wob_pipe"
+        tail -f "$wob_pipe" | wob
+        ;;
+
+    volume)
+        case ${2:-} in
+            up)   wpctl set-volume -l 0.9 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+            down) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+            mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+            *)    exit 2 ;;
+        esac
+        value=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '
+            /MUTED/ { print 0; next }
+            { print int($2 * 100 + 0.5) }
+        ')
+        show_osd "$value"
+        ;;
+
+    brightness)
+        case ${2:-} in
+            up)   brightnessctl -q set 1%+ ;;
+            down) brightnessctl -q set 1%- ;;
+            *)    exit 2 ;;
+        esac
+        value=$(brightnessctl -m | awk -F, 'NR == 1 { gsub(/%/, "", $4); print $4 }')
+        show_osd "$value"
+        ;;
+
+    lock)
+        swaymsg input type:keyboard xkb_switch_layout 0 >/dev/null
+        if ! pgrep -x swaylock >/dev/null; then
+            swaylock -f -c 000000 || :
+            swaymsg seat - cursor move 1 0 >/dev/null 2>&1 || :
+        fi
+        ;;
+
+    power)
+        choice=$(printf 'poweroff\nreboot\nlogout\n' | menu wmenu -p session)
+        case $choice in
+            poweroff) systemctl poweroff ;;
+            reboot)   systemctl reboot ;;
+            logout)   swaymsg exit ;;
+        esac
+        ;;
+
+    clipboard)
+        selection=$(cliphist list | menu wmenu -l 8 -p clipboard)
+        [ -n "$selection" ] || exit 0
+        printf '%s' "$selection" | cliphist decode | wl-copy
+        ;;
+
+    night)
+        uid=$(id -u)
+        if pgrep -u "$uid" -x gammastep >/dev/null; then
+            pkill -u "$uid" -x gammastep || :
+        else
+            gammastep -m wayland -P -O 3500 >/dev/null 2>&1 &
+        fi
+        ;;
+
+    screenshot)
+        action=${2:-}
+        target=${3:-}
+        case $target in screen|area) ;; *) exit 2 ;; esac
+        case $action in
+            save)
+                directory=$HOME/.screenshots
+                mkdir -p "$directory"
+                grimshot save "$target" "$directory/$(date '+%F_%H-%M-%S').png"
+                ;;
+            copy)
+                grimshot copy "$target"
+                ;;
+            *)
+                exit 2
+                ;;
+        esac
+        ;;
+
+    *)
+        printf 'usage: %s COMMAND [ARG...]\n' "$0" >&2
+        exit 2
+        ;;
+esac
