@@ -58,7 +58,9 @@ exec swayidle -w \
     timeout 300 '$helper lock' \
     timeout 600 'swaymsg "output * power off"' \
     resume 'swaymsg "output * power on"' \
-    before-sleep '$helper lock'
+    before-sleep '$helper lock' \
+    lock '$helper lock' \
+    unlock 'pkill -xu "$USER" -SIGUSR1 swaylock'
 
 ### Applications and session
 bindsym --to-code --no-repeat $mod+d exec $helper launcher

@@ -83,10 +83,10 @@ case ${1:-} in
         ;;
 
     lock)
-        swaymsg input type:keyboard xkb_switch_layout 0 >/dev/null
-        if ! pgrep -x swaylock >/dev/null; then
-            swaylock -f -c 000000 || :
-            swaymsg seat - cursor move 1 0 >/dev/null 2>&1 || :
+        uid=$(id -u)
+        swaymsg input type:keyboard xkb_switch_layout 0 >/dev/null 2>&1 || :
+        if ! pgrep -u "$uid" -x swaylock >/dev/null; then
+            swaylock -f
         fi
         ;;
 

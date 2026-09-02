@@ -75,7 +75,7 @@ proxy_toggle = (
 )
 for key in ("P", "["):
     config.bind(key, proxy_show)
-for key in ("<Ctrl-Shift-p>", "<Ctrl-[>"): # <Ctrl-[> doesn't work, idk why
+for key in ("<Ctrl-Shift-p>", "<Ctrl-Shift-[>"):
     config.bind(key, proxy_toggle)
 
 for key, command in {
